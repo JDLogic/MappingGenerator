@@ -1,0 +1,150 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            name = "forge"
+            url = "http://files.minecraftforge.net/maven"
+        }
+    }
+    dependencies {
+    }
+}
+
+plugins {
+    id 'org.ajoberstar.grgit' version '3.1.0'
+    id 'com.github.johnrengelman.shadow' version '4.0.4'
+}
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+
+group 'com.jdlogic'
+archivesBaseName = 'MappingGenerator'
+version = gitVersion()
+
+sourceCompatibility = targetCompatibility = 9 // this is here for eclipse
+
+def gitVersion() {
+    def raw = grgit.describe(longDescr: true, tags: true)
+    def desc = (raw == null ? '0.0-0-unknown' : raw).split('-') as List
+    def hash = desc.remove(desc.size() - 1)
+    def offset = desc.remove(desc.size() - 1)
+    def tag = desc.join('-')
+    return "${tag}.${offset}"
+}
+
+sourceSets {
+    main.java.srcDirs  = ["$rootDir/src/main/java"]
+    test.java.srcDirs  = ["$rootDir/src/test/java"]
+    java9.java.srcDirs = ["$rootDir/src/java9/java"]
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        name = "forge"
+        url = "http://files.minecraftforge.net/maven"
+    }
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.ow2.asm:asm:6.2.1'
+    implementation 'org.ow2.asm:asm-tree:6.2.1'
+    implementation 'net.sf.jopt-simple:jopt-simple:4.9'
+    implementation 'com.electronwill.night-config:core:3.6.0'
+    implementation 'com.electronwill.night-config:toml:3.6.0'
+    implementation 'net.minecraftforge:srgutils:0.2.5+'
+
+    java9Implementation files(sourceSets.main.output.classesDirs) { builtBy compileJava }
+}
+
+compileJava {
+    sourceCompatibility = targetCompatibility = 8
+    options.compilerArgs.addAll(['--release', '8'])
+}
+
+compileJava9Java {
+    sourceCompatibility = targetCompatibility = 9
+    options.compilerArgs.addAll(['--release', '9'])
+}
+
+jar {
+    into('META-INF/versions/9') {
+        from sourceSets.java9.output
+    }
+    manifest {
+        attributes(
+            'Main-Class' : 'com.jdlogic.mappinggenerator.MappingGenerator',
+            'Implementation-Version': project.version,
+            'Multi-Release': 'true'
+        )
+    }
+}
+
+shadowJar {
+    classifier 'fatjar'
+    into('META-INF/versions/9') {
+        from sourceSets.java9.output
+    }
+    manifest.from(jar.manifest)
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    into('META-INF/versions/9') {
+        from sourceSets.java9.allSource
+    }
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+    archives shadowJar
+    archives sourcesJar
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact shadowJar
+            artifact sourcesJar
+            pom {
+                name = 'MappingGenerator'
+                description = 'Utility for creating a SRG mapping of an obfuscated jar file'
+                url = 'https://github.com/JDLogic/MappingGenerator'
+                scm {
+                    url = 'https://github.com/JDLogic/MappingGenerator'
+                    connection = 'scm:git:git://github.com/JDLogic/MappingGenerator.git'
+                    developerConnection = 'scm:git:git@github.com:JDLogic/MappingGenerator.git'
+                }
+                issueManagement {
+                    system = 'github'
+                    url = 'https://github.com/JDLogic/MappingGenerator/issues'
+                }
+
+                developers {
+                    developer {
+                        id = 'JDLogic'
+                        name = 'JDLogic'
+                    }
+                }
+
+                licenses { // TODO
+                    license {
+                        name = ''
+                        url = ''
+                        distribution = 'repo'
+                    }
+                }
+            }
+        }
+    }
+}
+
+if (!JavaVersion.current().java9Compatible) {
+    throw new RuntimeException("You must build this with JDK 9")
+}

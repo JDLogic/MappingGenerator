@@ -1,0 +1,24 @@
+# These are all optional and default to true
+generateClassNames = true
+generateFieldNames = true
+generateMethodNames = true
+generateEnumNames = true
+generateLambdaNames = true
+generateAccessCheckNames = true
+
+# These are all optional and will be given default values unless specified
+nameformat.defaultpackage = "net/newclasses/"
+nameformat.class = "C_{classid}_{obfname}"
+# This is the same format as class by default
+nameformat.innerclass = "C_{classid}_{obfname}"
+nameformat.field = "field_{fmid}_{obfname}"
+nameformat.enum = "ENUM_{enumid}_{obfname}"
+nameformat.method = "func_{fmid}_{obfname}"
+# This is the same format as method by default
+nameformat.lambda = "lambda${obfname}${lambdaid}"
+# This is the same format as method by default
+nameformat.access = "access${accessid}"
+
+# Specify starting value for any id (optional)
+ids.classid = 100000
+ids.fmid = 100000

@@ -1,0 +1,10 @@
+#intellij
+/.idea/
+/out/
+
+#gradle
+/.gradle/
+/build/
+
+#project
+/run/
