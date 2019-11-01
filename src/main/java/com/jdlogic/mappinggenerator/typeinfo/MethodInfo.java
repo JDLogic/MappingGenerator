@@ -1,5 +1,6 @@
 package com.jdlogic.mappinggenerator.typeinfo;
 
+import com.jdlogic.mappinggenerator.MappingGenerator;
 import com.jdlogic.mappinggenerator.Utils;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
@@ -113,7 +114,7 @@ public class MethodInfo implements IAccessInfo
 
     public void initOverride(Map<String, ClassInfo> classes, List<Set<MethodInfo>> multiOverrides)
     {
-        if (Utils.isConstructor(name) || isLambda)
+        if (Utils.isConstructor(name) || isLambda || isAccessCheck)
             return;
 
         String key = getKey();
@@ -141,6 +142,17 @@ public class MethodInfo implements IAccessInfo
                     multiOverrides.add(overrides);
                 else
                     toUpdate.forEach(s -> s.addAll(overrides)); //TODO check for multiple sets and merger?
+
+                String indent = Utils.getLogIndent(parent.getName(), 2);
+                MappingGenerator.LOG.info(indent + "Method " + this.toString() + " overrides the following methods:");
+                overrides.stream()
+                        .map(MethodInfo::toString)
+                        .forEach(s -> MappingGenerator.LOG.info(indent + "\t" + s));
+            }
+            else
+            {
+                String indent = Utils.getLogIndent(parent.getName(), 2);
+                MappingGenerator.LOG.info(indent + "Method " + this.toString() + " overrides method " + this.override.toString());
             }
         }
     }

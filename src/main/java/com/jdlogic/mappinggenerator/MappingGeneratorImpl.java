@@ -122,15 +122,25 @@ public class MappingGeneratorImpl
 
        List<Set<MethodInfo>> multiOverrides = new ArrayList<>();
 
+       MappingGenerator.LOG.info("Processing method overrides and interface implementations");
         toProcess.forEach(cls ->
         {
-            renameClass(cls, nameProvider, nameGenerator, mappingOut);
+            String indent = Utils.getLogIndent(cls.getName(), 1);
+            MappingGenerator.LOG.info( indent + "Processing " + cls.getName() + "...");
             cls.initOverrides(classes, multiOverrides);
         });
 
+        MappingGenerator.LOG.info("Renaming classes");
         toProcess.forEach(cls ->
         {
-            MappingGenerator.LOG.info("Processing members for class " + cls.getName());
+            renameClass(cls, nameProvider, nameGenerator, mappingOut);
+        });
+
+        MappingGenerator.LOG.info("Renaming class members");
+        toProcess.forEach(cls ->
+        {
+            String indent = Utils.getLogIndent(cls.getName(), 1);
+            MappingGenerator.LOG.info(indent + "Processing members for class " + cls.getName());
             cls.getFields().forEach(f -> renameField(cls, f, nameProvider, nameGenerator, mappingOut));
             cls.getMethods().forEach(m -> renameMethod(cls, m, nameProvider, nameGenerator, mappingOut, multiOverrides, toProcess));
         });
@@ -141,6 +151,7 @@ public class MappingGeneratorImpl
         String clsName;
         String oldName = cls.getName();
         int index = oldName.lastIndexOf("$");
+        String logIndent = Utils.getLogIndent(cls.getName(), 1);
 
         if (index >= 0)
         {
@@ -151,24 +162,26 @@ public class MappingGeneratorImpl
             if (cls.isAnon())
             {
                 clsName = newOuter + "$" + inner;
-                MappingGenerator.LOG.info(String.format("Renaming anon class %s to %s", cls.getName(), clsName));
+                MappingGenerator.LOG.info(logIndent + String.format("Renaming anon class %s to %s", cls.getName(), clsName));
             }
             else
             {
                 clsName = nameProvider.getClassName(cls.getName()).orElseGet(() -> nameGenerator.generateInnerClass(cls.getName(), newOuter, inner));
-                MappingGenerator.LOG.info(String.format("Renaming inner class %s to %s", oldName, clsName));
+                MappingGenerator.LOG.info(logIndent + String.format("Renaming inner class %s to %s", oldName, clsName));
             }
         }
         else
         {
             clsName = nameProvider.getClassName(cls.getName()).orElseGet(() -> nameGenerator.generateClass(cls.getName()));
-            MappingGenerator.LOG.info(String.format("Renaming class %s to %s", oldName, clsName));
+            MappingGenerator.LOG.info(logIndent + String.format("Renaming class %s to %s", oldName, clsName));
         }
         mappingOut.addClass(cls.getName(), clsName);
     }
 
     private static void renameField(ClassInfo cls, FieldInfo f, INameProvider nameProvider, INameGenerator nameGenerator, IMappingFile mappingOut)
     {
+        String logIndent = Utils.getLogIndent(cls.getName(), 2);
+
         String fieldName = nameProvider.getFieldName(cls.getName(), f.getName()).orElseGet(() ->
         {
             if (cls.isEnum() && f.hasModifier(Opcodes.ACC_ENUM))
@@ -176,7 +189,7 @@ public class MappingGeneratorImpl
                 if (f.hasModifier(Opcodes.ACC_ENUM))
                 {
                     String ret = nameGenerator.generateEnum(cls.getName(), f.getName());
-                    MappingGenerator.LOG.info(String.format("\tRenaming enum %s to %s", f.toString(), ret));
+                    MappingGenerator.LOG.info(logIndent + String.format("Renaming enum %s to %s", f.toString(), ret));
                     return ret;
                 }
                 else if (f.hasModifier(Opcodes.ACC_SYNTHETIC) && f.getDesc().equals(String.format(Constants.ENUM_FVALS_DESC, cls.getName())))
@@ -185,54 +198,56 @@ public class MappingGeneratorImpl
                 }
             }
             String ret = nameGenerator.generateField(cls.getName(), f.getName());
-            MappingGenerator.LOG.info(String.format("\tRenaming field %s to %s", f.toString(), ret));
+            MappingGenerator.LOG.info(logIndent + String.format("Renaming field %s to %s", f.toString(), ret));
             return ret;
         });
         mappingOut.getClass(cls.getName()).addField(f.getName(), fieldName);
     }
 
-    private static String renameMethod(ClassInfo cls, MethodInfo m, INameProvider nameProvider, INameGenerator nameGenerator, IMappingFile mappingOut, List<Set<MethodInfo>> multiOverrides, List<ClassInfo> jarClasses)
+    private static String renameMethod(ClassInfo currentCls, MethodInfo m, INameProvider nameProvider, INameGenerator nameGenerator, IMappingFile mappingOut, List<Set<MethodInfo>> multiOverrides, List<ClassInfo> jarClasses)
     {
         if (Utils.isConstructor(m.getName()))
             return "";
 
-        if (!jarClasses.contains(cls))
+        if (!jarClasses.contains(m.getParent()))
             return m.getName(); // override from lib, just return the name
+
+        String logIndent = Utils.getLogIndent(currentCls.getName(), 2);
 
         String methodName;
         if (m.getBouncer() != null)
         {
-            methodName = renameMethod(cls, m.getBouncer(), nameProvider, nameGenerator, mappingOut, multiOverrides, jarClasses);
-            MappingGenerator.LOG.info(String.format("\tRenaming method %s after bouncer %s %s", m.toString(), methodName, m.getBouncer().getDesc()));
+            methodName = renameMethod(currentCls, m.getBouncer(), nameProvider, nameGenerator, mappingOut, multiOverrides, jarClasses);
+            MappingGenerator.LOG.info(logIndent + String.format("Renaming method %s after bouncer %s %s", m.toString(), methodName, m.getBouncer().getDesc()));
         }
         else if (m.getOverride() != null)
         {
-            methodName = renameMethod(m.getOverride().getParent(), m.getOverride(), nameProvider, nameGenerator, mappingOut, multiOverrides, jarClasses);
-            MappingGenerator.LOG.info(String.format("\tRenaming method %s after override %s.%s %s", m.toString(), m.getOverride().getParent().getName(), methodName, m.getOverride().getDesc()));
+            methodName = renameMethod(currentCls, m.getOverride(), nameProvider, nameGenerator, mappingOut, multiOverrides, jarClasses);
+            MappingGenerator.LOG.info(logIndent + String.format("Renaming method %s after override %s.%s %s", m.toString(), m.getOverride().getParent().getName(), methodName, m.getOverride().getDesc()));
         }
         else
         {
-            methodName = nameProvider.getMethodName(cls.getName(), m.getName(), m.getDesc()).orElseGet(() ->
+            methodName = nameProvider.getMethodName(m.getParent().getName(), m.getName(), m.getDesc()).orElseGet(() ->
             {
                 if (m.isLambda())
                 {
-                    String ret = nameGenerator.generateLambda(cls.getName(), m.getName(), m.getDesc());
-                    MappingGenerator.LOG.info(String.format("\tRenaming lambda %s to %s", m.toString(), ret));
+                    String ret = nameGenerator.generateLambda(m.getParent().getName(), m.getName(), m.getDesc());
+                    MappingGenerator.LOG.info(logIndent + String.format("Renaming lambda %s to %s", m.toString(), ret));
                     return ret;
                 }
                 else if (m.isAccessCheck())
                 {
-                    String ret = nameGenerator.generateAccessCheck(cls.getName(), m.getName(), m.getDesc());
-                    MappingGenerator.LOG.info(String.format("\tRenaming access check %s to %s", m.toString(), ret));
+                    String ret = nameGenerator.generateAccessCheck(m.getParent().getName(), m.getName(), m.getDesc());
+                    MappingGenerator.LOG.info(logIndent + String.format("Renaming access check %s to %s", m.toString(), ret));
                     return ret;
                 }
-                else if (cls.isEnum())
+                else if (m.getParent().isEnum())
                 {
-                    if (m.getDesc().equals(String.format(Constants.ENUM_VAL_OF_DESC, cls.getName())))
+                    if (m.getDesc().equals(String.format(Constants.ENUM_VAL_OF_DESC, m.getParent().getName())))
                     {
                         return Constants.ENUM_VAL_OF_NAME;
                     }
-                    else if (m.getDesc().equals(String.format(Constants.ENUM_VALS_DESC, cls.getName())))
+                    else if (m.getDesc().equals(String.format(Constants.ENUM_VALS_DESC, m.getParent().getName())))
                     {
                         return Constants.ENUM_VALS_NAME;
                     }
@@ -249,13 +264,13 @@ public class MappingGeneratorImpl
                         .filter(Optional::isPresent)
                         .map(Optional::get)
                         .findFirst()
-                        .orElseGet(() -> nameGenerator.generateMethod(cls.getName(), m.getName(), m.getDesc()));
-                MappingGenerator.LOG.info(String.format("\tRenaming method %s to %s", m.toString(), ret));
+                        .orElseGet(() -> nameGenerator.generateMethod(m.getParent().getName(), m.getName(), m.getDesc()));
+                MappingGenerator.LOG.info(logIndent + String.format("Renaming method %s to %s", m.toString(), ret));
                 return ret;
             });
         }
 
-        mappingOut.getClass(cls.getName()).addMethod(m.getName(), m.getDesc(), methodName);
+        mappingOut.getClass(m.getParent().getName()).addMethod(m.getName(), m.getDesc(), methodName);
 
         multiOverrides.stream()
             .filter(s -> s.contains(m))

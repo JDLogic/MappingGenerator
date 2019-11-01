@@ -1,6 +1,8 @@
 package com.jdlogic.mappinggenerator.typeinfo;
 
 import com.jdlogic.mappinggenerator.Constants;
+import com.jdlogic.mappinggenerator.MappingGenerator;
+import com.jdlogic.mappinggenerator.Utils;
 import org.objectweb.asm.tree.ClassNode;
 import java.util.Arrays;
 import java.util.Collection;
@@ -112,27 +114,32 @@ public class ClassInfo implements IAccessInfo
         while (!interfaceMethods.isEmpty() && scls != null)
         {
             ClassInfo cls = classes.get(scls);
-            cls.methods.values().forEach(m ->
-            {
-                MethodInfo intfMethod = interfaceMethods.remove(m.getKey());
-                if (intfMethod != null)
-                {
-                    if (m.getOverride() == null)
+            cls.methods.values().stream()
+                    .filter(m -> !Utils.isConstructor(m.getName()) && !m.isLambda() && !m.isAccessCheck())
+                    .forEach(m ->
                     {
-                        m.setOverride(intfMethod);
-                    }
-                    else
-                    {
-                        List<Set<MethodInfo>> toUpdate = multiOverrides.stream()
-                                .filter(s -> s.contains(intfMethod))
-                                .collect(Collectors.toList());
-                        if (toUpdate.isEmpty())
-                            multiOverrides.add(new HashSet<>(Arrays.asList(intfMethod, m)));
-                        else
-                            toUpdate.forEach(s -> s.add(m)); //TODO check for multiple sets and merger?
-                    }
-                }
-            });
+                        MethodInfo intfMethod = interfaceMethods.remove(m.getKey());
+                        if (intfMethod != null)
+                        {
+                            if (m.getOverride() == null)
+                            {
+                                m.setOverride(intfMethod);
+                            }
+                            else
+                            {
+                                List<Set<MethodInfo>> toUpdate = multiOverrides.stream()
+                                        .filter(s -> s.contains(intfMethod))
+                                        .collect(Collectors.toList());
+                                if (toUpdate.isEmpty())
+                                    multiOverrides.add(new HashSet<>(Arrays.asList(intfMethod, m)));
+                                else
+                                    toUpdate.forEach(s -> s.add(m)); //TODO check for multiple sets and merger?
+                            }
+
+                            String indent = Utils.getLogIndent(this.name, 2);
+                            MappingGenerator.LOG.info(indent + "Interface method " + intfMethod.toString() + " is implemented by a parent class method " + m.toString());
+                        }
+                    });
             scls = cls.superCls;
         }
     }
